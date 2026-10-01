@@ -314,10 +314,9 @@ Environment variables: see `.env.example`.
 
 ## Use of AI tools
 
-<!-- Rewrite this section in your own words before submitting. -->
 
 AI (Claude) was used as a pair programmer:
 
 - **Design review:** I drew the ER diagram myself, and AI review pointed out the missing Employee↔Service many-to-many relation, the need for a DB-level double-booking guard, and timezone handling. I changed the design accordingly.
-- **Code generation:** models, the service/selector layer, serializers, views, tests, the React frontend and Docker setup were generated with AI from my design, then reviewed and adjusted.
+- **Code generation:**  the service/selector layer, tests, the React frontend and Docker setup were generated with AI from my design, then reviewed and adjusted.
 - **How I verified it:** I read and understood every file, ran the test suite (including the concurrency test) against PostgreSQL, and went through the main flows in the browser and in Swagger.
