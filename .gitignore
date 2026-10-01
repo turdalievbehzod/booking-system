@@ -164,3 +164,4 @@ cython_debug/
 .env
 HANDOFF.md
 server_*.txt
+staticfiles/
