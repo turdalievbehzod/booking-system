@@ -1,37 +1,39 @@
 """
-Base Django settings for core project.
-
-This file contains shared configuration for all environments.
-Environment-specific overrides (local/production) live in:
-- core/settings/dev.py
-- core/settings/prod.py
+Base Django settings shared by all environments.
+Environment-specific overrides live in dev.py / prod.py / test.py.
 """
 from datetime import timedelta
 from pathlib import Path
 
+from celery.schedules import crontab
+
+from core import config
 
 # -------------------------------------------------------------------
 # PATHS
 # -------------------------------------------------------------------
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-FRONTEND_DIR = BASE_DIR.parent / 'petcare-master'
+# core/settings/base.py -> project root
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+SECRET_KEY = config.SECRET_KEY
 
 # -------------------------------------------------------------------
 # APPLICATIONS
 # -------------------------------------------------------------------
 
 INSTALLED_APPS = [
-    'modeltranslation',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.postgres',  # ExclusionConstraint, range fields
 ]
 
 THIRD_PARTY_APPS = [
+    'corsheaders',
     'rest_framework',
     'drf_spectacular',
     'rest_framework_simplejwt',
@@ -41,17 +43,13 @@ THIRD_PARTY_APPS = [
 ]
 
 MY_APPS = [
-    'apps.shared',
     'apps.users',
-    'apps.about',
-    'apps.blogs',
-    'apps.contact',
     'apps.services',
+    'apps.bookings',
 ]
 
 INSTALLED_APPS += THIRD_PARTY_APPS
 INSTALLED_APPS += MY_APPS
-INSTALLED_APPS += ['corsheaders']
 
 # -------------------------------------------------------------------
 # MIDDLEWARE
@@ -61,15 +59,11 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'apps.shared.middlewares.permission.EndpointPermissionMiddleware',
-
-    # "corsheaders.middleware.CorsMiddleware",
 ]
 
 # -------------------------------------------------------------------
@@ -87,7 +81,7 @@ ASGI_APPLICATION = 'core.asgi.application'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [FRONTEND_DIR],
+        'DIRS': [],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -101,8 +95,26 @@ TEMPLATES = [
 ]
 
 # -------------------------------------------------------------------
+# DATABASE
+# -------------------------------------------------------------------
+
+# PostgreSQL is required: double booking is prevented by an exclusion constraint.
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config.DB_NAME,
+        'USER': config.DB_USER,
+        'PASSWORD': config.DB_PASSWORD,
+        'HOST': config.DB_HOST,
+        'PORT': config.DB_PORT,
+    }
+}
+
+# -------------------------------------------------------------------
 # AUTH / PASSWORDS
 # -------------------------------------------------------------------
+
+AUTH_USER_MODEL = 'users.User'
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -112,20 +124,11 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # -------------------------------------------------------------------
-# INTERNATIONALIZATION
+# INTERNATIONALIZATION / TIME
 # -------------------------------------------------------------------
 
-MODELTRANSLATION_DEFAULT_LANGUAGE = 'en'
 LANGUAGE_CODE = 'en'
-LANGUAGES = (
-    ('en', 'English'),
-    ('ru', 'Russian'),
-    ('uz', 'Uzbek'),
-)
-
-LOCALE_PATHS = (BASE_DIR / 'locale',)
-
-TIME_ZONE = 'Asia/Tashkent'
+TIME_ZONE = config.TIME_ZONE  # business timezone; DB stores UTC
 USE_I18N = True
 USE_TZ = True
 
@@ -134,97 +137,95 @@ USE_TZ = True
 # -------------------------------------------------------------------
 
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR.parent.parent / 'static'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR.parent.parent / 'media'
-
-# -------------------------------------------------------------------
-# DEFAULT PRIMARY KEY TYPE
-# -------------------------------------------------------------------
+MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-AUTH_USER_MODEL = 'users.User'
-
-AUTHENTICATION_BACKENDS = [
-    'apps.users.utils.custom_backend.MultiFieldBackend',
-    'django.contrib.auth.backends.ModelBackend',
-]
-
 # -------------------------------------------------------------------
-# DJANGO REST FRAMEWORK CONFIG
+# DJANGO REST FRAMEWORK
 # -------------------------------------------------------------------
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
+    # Secure by default; public endpoints opt out explicitly.
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
     ],
-    # 'DEFAULT_FILTER_BACKENDS': [
-    #     'django_filters.rest_framework.DjangoFilterBackend',
-    # ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
-    'EXCEPTION_HANDLER': 'apps.shared.exceptions.handler.custom_exception_handler',
-    'DEFAULT_PAGINATION_CLASS': 'apps.shared.utils.custom_pagination.CustomPageNumberPagination',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/min',
+        'user': '120/min',
+    },
 }
-
-# -------------------------------------------------------------------
-# DRF SPECTACULAR CONFIG
-# -------------------------------------------------------------------
-
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'PetCare API',
-    'DESCRIPTION': 'Veterinary service backend',
+    'TITLE': 'Appointment Booking API',
+    'DESCRIPTION': 'Services, employees, availability, slots and bookings for a small business.',
     'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
-
-# -------------------------------------------------------------------
-# SIMPLEJWT CONFIG
-# -------------------------------------------------------------------
-
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=10),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 # -------------------------------------------------------------------
-# CELERY CONFIG
+# CORS
 # -------------------------------------------------------------------
 
-CELERY_BROKER_URL = 'redis://127.0.0.1:6379/2'
+CORS_ALLOWED_ORIGINS = config.CORS_ALLOWED_ORIGINS
+
+# -------------------------------------------------------------------
+# CELERY
+# -------------------------------------------------------------------
+
+CELERY_BROKER_URL = config.CELERY_BROKER_URL
 CELERY_RESULT_BACKEND = 'django-db'
+CELERY_TASK_ALWAYS_EAGER = config.CELERY_TASK_ALWAYS_EAGER
+CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
-
-CELERY_BEAT_SCHEDULE = {}
-
-# -------------------------------------------------------------------
-# LANGUAGES CONFIG
-# -------------------------------------------------------------------
-
-CORS_ALLOW_ALL_ORIGINS = True
+CELERY_BEAT_SCHEDULE = {
+    'expire-stale-pending-bookings': {
+        'task': 'apps.bookings.tasks.expire_stale_pending_bookings_task',
+        'schedule': crontab(minute='*/10'),
+    },
+}
 
 # -------------------------------------------------------------------
-# EMAIL CONFIG — Resend API (no SMTP)
+# EMAIL
 # -------------------------------------------------------------------
 
-RESEND_API_KEY = ""
-DEFAULT_FROM_EMAIL = "PetCare <noreply@petcare.com>"
+EMAIL_BACKEND = config.EMAIL_BACKEND
+EMAIL_HOST = config.EMAIL_HOST
+EMAIL_PORT = config.EMAIL_PORT
+EMAIL_HOST_USER = config.EMAIL_HOST_USER
+EMAIL_HOST_PASSWORD = config.EMAIL_HOST_PASSWORD
+EMAIL_USE_TLS = config.EMAIL_USE_TLS
+DEFAULT_FROM_EMAIL = config.DEFAULT_FROM_EMAIL
 
 # -------------------------------------------------------------------
-# VERIFICATION CODE SETTINGS
+# BOOKING RULES
 # -------------------------------------------------------------------
 
-# Seconds before a resend is allowed after the previous code was issued
-VERIFICATION_CODE_RESEND_COOLDOWN = 60
-# Max wrong-code attempts before the code is invalidated
-VERIFICATION_CODE_MAX_ATTEMPTS = 5
+BOOKING_SLOT_STEP_MINUTES = 15
+BOOKING_HORIZON_DAYS = 60
+BOOKING_CANCELLATION_DEADLINE_HOURS = 2
