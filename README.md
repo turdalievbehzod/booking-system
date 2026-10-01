@@ -4,7 +4,7 @@ Booking system for a small service business (barbershop, clinic, salon...). Cust
 
 **Backend:** Django 5.2 · Django REST Framework · PostgreSQL · SimpleJWT · Celery + Redis · drf-spectacular (OpenAPI)
 **Frontend:** React 19 · React Router · Vite (no UI library, plain CSS)
-**Infra:** Docker Compose
+**Infra:** Docker Compose (local) · Render + Vercel (deployment)
 
 ---
 
@@ -221,7 +221,7 @@ A React single-page app in `frontend/` that uses only the public REST API, the s
 
 Decisions worth knowing:
 
-- **Dev proxy instead of CORS.** Vite forwards `/api` to Django, so the browser sees one origin. For a separate deployment set `VITE_API_URL` and `CORS_ALLOWED_ORIGINS`.
+- **Proxy instead of CORS.** In development Vite forwards `/api` to Django; in production Vercel does the same with a rewrite (`frontend/vercel.json`). The browser always sees one origin. To call the API directly from another domain instead, set `VITE_API_URL` and `CORS_ALLOWED_ORIGINS`.
 - **JWT handling.** Tokens live in `localStorage`. On a 401 the client refreshes once and retries. Parallel requests share one refresh call, because refresh tokens rotate and are blacklisted, so a second refresh with the old token would fail. If refresh fails, public pages keep working anonymously.
 - **Times are always shown in the business timezone** (`VITE_BUSINESS_TZ`, same as Django's `TIME_ZONE`). A customer abroad sees the local time they must show up.
 - **Race conditions in the UI.** If someone takes the slot between "select" and "confirm", the API returns 409. The page shows *"Sorry, someone just booked this time"* and reloads the free slots.
@@ -261,6 +261,40 @@ Decisions worth knowing:
 | Datetime sent without timezone offset | Read in the business timezone |
 
 **Known limitations / next steps:** holidays and one-off time off (a `TimeOff` table), buffer time between appointments, per-employee timezones, a booking status history table for a full audit trail, and calendar (.ics) export.
+
+---
+
+## Deployment (Render + Vercel)
+
+```
+browser ──► Vercel (React build) ──/api/*──► Render web service (gunicorn + Django) ──► Render PostgreSQL
+```
+
+The frontend is static files on Vercel. Vercel forwards `/api/*` to the backend on Render, so there is no CORS and the JWT flow is the same as in development.
+
+**1. Backend on Render.** Dashboard → **New → Blueprint** → pick this repo. `render.yaml` creates:
+
+- `booking-db`: PostgreSQL. The first migration enables `btree_gist` for the double-booking constraint.
+- `booking-api`: the web service. The build installs requirements and runs `collectstatic` (WhiteNoise serves the admin and API-docs assets). Start runs `migrate`, creates the admin account, then starts gunicorn.
+
+When asked, fill in `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL` and `DJANGO_SUPERUSER_PASSWORD`. `SECRET_KEY` is generated, and `DATABASE_URL` is wired in from the database. Production settings (`core/settings/prod.py`) refuse to start without a `SECRET_KEY`. They add Render's hostname to `ALLOWED_HOSTS`, redirect to HTTPS and log errors to stdout.
+
+Check: `https://booking-api.onrender.com/api/docs/` and `/admin/`.
+
+**2. Frontend on Vercel.** **Add New → Project** → this repo, **Root Directory `frontend`** (Vite is detected). Environment variables:
+
+| Variable | Value |
+|---|---|
+| `VITE_BACKEND_URL` | `https://booking-api.onrender.com` (the "Django admin" link) |
+| `VITE_BUSINESS_TZ` | `Asia/Tashkent` (must match Django's `TIME_ZONE`) |
+
+If Render gave the service a different URL than `booking-api.onrender.com`, update the destination in `frontend/vercel.json` and `VITE_BACKEND_URL`.
+
+**Free-plan trade-offs:**
+
+- Celery runs tasks inline (`CELERY_TASK_ALWAYS_EAGER=True`), so no Redis or worker is needed. Emails go to the service logs (console backend), and a failed email still never fails a booking.
+- Without a beat process, unconfirmed pending bookings are not auto-cancelled after their start time. Past slots are never offered, so this doesn't affect double booking. `render.yaml` has a commented paid worker + Redis setup that runs worker and beat.
+- A free web service sleeps after 15 minutes idle, so the first request takes about a minute. The free database expires after 30 days.
 
 ---
 
