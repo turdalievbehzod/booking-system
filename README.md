@@ -6,6 +6,8 @@ Booking system for a small service business (barbershop, clinic, salon...). Cust
 **Frontend:** React 19 · React Router · Vite (no UI library, plain CSS)
 **Infra:** Docker Compose (local) · Render + Vercel (deployment)
 
+**Live demo:** https://booking-system-ochre-delta.vercel.app · **API docs:** https://booking-api-bkoe.onrender.com/api/docs/ (the free backend sleeps when idle, so the first request can take about a minute)
+
 ---
 
 ## Quick start
@@ -279,16 +281,16 @@ The frontend is static files on Vercel. Vercel forwards `/api/*` to the backend 
 
 When asked, fill in `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL` and `DJANGO_SUPERUSER_PASSWORD`. `SECRET_KEY` is generated, and `DATABASE_URL` is wired in from the database. Production settings (`core/settings/prod.py`) refuse to start without a `SECRET_KEY`. They add Render's hostname to `ALLOWED_HOSTS`, redirect to HTTPS and log errors to stdout.
 
-Check: `https://booking-api.onrender.com/api/docs/` and `/admin/`.
+Check: `https://booking-api-bkoe.onrender.com/api/docs/` and `/admin/`.
 
 **2. Frontend on Vercel.** **Add New → Project** → this repo, **Root Directory `frontend`** (Vite is detected). Environment variables:
 
 | Variable | Value |
 |---|---|
-| `VITE_BACKEND_URL` | `https://booking-api.onrender.com` (the "Django admin" link) |
+| `VITE_BACKEND_URL` | `https://booking-api-bkoe.onrender.com` (the "Django admin" link) |
 | `VITE_BUSINESS_TZ` | `Asia/Tashkent` (must match Django's `TIME_ZONE`) |
 
-If Render gave the service a different URL than `booking-api.onrender.com`, update the destination in `frontend/vercel.json` and `VITE_BACKEND_URL`.
+If Render gave the service a different URL (the name `booking-api` may already be taken, as it was here), update the destination in `frontend/vercel.json` and `VITE_BACKEND_URL`.
 
 **Free-plan trade-offs:**
 
