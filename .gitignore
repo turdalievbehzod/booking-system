@@ -163,3 +163,4 @@ cython_debug/
 .idea/
 .env
 HANDOFF.md
+server_*.txt
