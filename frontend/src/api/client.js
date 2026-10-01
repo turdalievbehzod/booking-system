@@ -38,6 +38,8 @@ function formatError(data) {
   return Object.values(data).flat().join(' ')
 }
 
+const SERVER_UNAVAILABLE = 'The server is not responding. Please try again in a minute.'
+
 let onSessionExpired = () => {}
 export function setSessionExpiredHandler(fn) { onSessionExpired = fn }
 
@@ -91,7 +93,12 @@ export async function api(path, { method = 'GET', body, params } = {}) {
 
   if (res.status === 204) return null
   const data = await res.json().catch(() => null)
-  if (!res.ok) throw new ApiError(res.status, data)
+  if (!res.ok) {
+    // A non-JSON error page means the request never reached Django
+    // (backend asleep, deploying or down), not a validation error.
+    throw new ApiError(res.status, data ?? (res.status >= 500 ? SERVER_UNAVAILABLE : null))
+  }
+  if (data === null) throw new ApiError(res.status, SERVER_UNAVAILABLE)
   return data
 }
 
