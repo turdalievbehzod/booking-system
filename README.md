@@ -277,7 +277,7 @@ The frontend is static files on Vercel. Vercel forwards `/api/*` to the backend 
 **1. Backend on Render.** Dashboard → **New → Blueprint** → pick this repo. `render.yaml` creates:
 
 - `booking-db`: PostgreSQL. The first migration enables `btree_gist` for the double-booking constraint.
-- `booking-api`: the web service. The build installs requirements and runs `collectstatic` (WhiteNoise serves the admin and API-docs assets). Start runs `migrate`, creates the admin account, then starts gunicorn.
+- `booking-api`: the web service. The build installs requirements and runs `collectstatic` (WhiteNoise serves the admin and API-docs assets). Start runs `migrate`, then `ensure_superuser` (creates the admin from `DJANGO_SUPERUSER_*` once, never promotes an existing account, and logs the reason if it can't create it), then gunicorn.
 
 When asked, fill in `DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_EMAIL` and `DJANGO_SUPERUSER_PASSWORD`. `SECRET_KEY` is generated, and `DATABASE_URL` is wired in from the database. Production settings (`core/settings/prod.py`) refuse to start without a `SECRET_KEY`. They add Render's hostname to `ALLOWED_HOSTS`, redirect to HTTPS and log errors to stdout.
 

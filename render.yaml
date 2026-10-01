@@ -18,11 +18,11 @@ services:
     region: frankfurt
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
     # Free instances have no shell and no pre-deploy step, so migrations and the
-    # admin account (from DJANGO_SUPERUSER_*) are handled on start. createsuperuser
-    # fails harmlessly once the account exists.
+    # admin account (from DJANGO_SUPERUSER_*) are handled on start. ensure_superuser
+    # is idempotent and logs why when it cannot create the account.
     startCommand: >-
       python manage.py migrate --noinput &&
-      (python manage.py createsuperuser --noinput || true) &&
+      python manage.py ensure_superuser &&
       gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --access-logfile -
     envVars:
       - key: PYTHON_VERSION
