@@ -1,6 +1,8 @@
 from datetime import time, timedelta
 from decimal import Decimal
+from io import StringIO
 
+from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
@@ -88,3 +90,36 @@ class AvailabilityTests(APITestCase):
 
     def test_invalid_day_rejected(self):
         self.assertEqual(self.post('14:00', '18:00', day=7).status_code, 400)
+
+
+class SeedDemoCommandTests(APITestCase):
+    def seed(self):
+        call_command('seed_demo', stdout=StringIO())
+
+    def test_seeds_bookable_catalogue(self):
+        self.seed()
+        self.assertEqual(Service.objects.count(), 6)
+        self.assertEqual(Employee.objects.count(), 4)
+        # Every service has someone who provides it.
+        self.assertFalse(Service.objects.filter(employees__isnull=True).exists())
+
+        # The next Monday-to-Friday day has free slots for a haircut.
+        day = timezone.localdate() + timedelta(days=1)
+        while day.weekday() > 4:
+            day += timedelta(days=1)
+        haircut = Service.objects.get(name="Men's haircut")
+        response = self.client.get('/api/v1/slots/', {'service_id': haircut.pk, 'date': day})
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(len(response.data), 0)
+
+    def test_second_run_changes_nothing(self):
+        self.seed()
+        counts = (Service.objects.count(), Employee.objects.count(), Availability.objects.count())
+        self.seed()
+        self.assertEqual(counts, (Service.objects.count(), Employee.objects.count(), Availability.objects.count()))
+
+    def test_skips_when_catalogue_exists(self):
+        Service.objects.create(name='Own service', duration_minutes=30, price=Decimal('1.00'))
+        self.seed()
+        self.assertEqual(Service.objects.count(), 1)
+        self.assertFalse(Employee.objects.exists())
