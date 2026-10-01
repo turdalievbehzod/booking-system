@@ -1,10 +1,12 @@
+# DB_NAME, DB_USER, DB_PASSWORD and SECRET_KEY come from .env (compose reads it
+# automatically); DB_HOST and the broker URL point at the containers instead.
 x-app-env: &app-env
   DJANGO_SETTINGS_MODULE: core.settings.dev
-  SECRET_KEY: change-me-in-production
+  SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
   DEBUG: "True"
-  DB_NAME: booking
-  DB_USER: booking
-  DB_PASSWORD: booking
+  DB_NAME: ${DB_NAME:-booking}
+  DB_USER: ${DB_USER:-booking}
+  DB_PASSWORD: ${DB_PASSWORD:-booking}
   DB_HOST: db
   DB_PORT: "5432"
   CELERY_BROKER_URL: redis://redis:6379/0
@@ -25,15 +27,15 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: booking
-      POSTGRES_USER: booking
-      POSTGRES_PASSWORD: booking
+      POSTGRES_DB: ${DB_NAME:-booking}
+      POSTGRES_USER: ${DB_USER:-booking}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-booking}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U booking -d booking"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 3s
       retries: 20
 
