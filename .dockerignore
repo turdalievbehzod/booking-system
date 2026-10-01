@@ -1,0 +1,12 @@
+.git
+.venv
+venv
+.env
+.vscode
+.idea
+__pycache__
+*.pyc
+staticfiles
+media
+server_*.txt
+frontend
