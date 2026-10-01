@@ -23,7 +23,7 @@ class Service(models.Model):
     duration_minutes = models.PositiveSmallIntegerField(
         validators=[MinValueValidator(5), MaxValueValidator(8 * 60)],
     )
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     is_active = models.BooleanField(default=True)
     employees = models.ManyToManyField(
         Employee,
