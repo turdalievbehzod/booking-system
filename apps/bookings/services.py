@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, OperationalError, transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
@@ -25,8 +25,12 @@ logger = logging.getLogger(__name__)
 
 CANCELLATION_DEADLINE_HOURS = getattr(settings, 'BOOKING_CANCELLATION_DEADLINE_HOURS', 2)
 
-# PostgreSQL SQLSTATE for exclusion_violation (our no-overlap constraint).
+# PostgreSQL SQLSTATEs: exclusion_violation (our no-overlap constraint) and
+# deadlock_detected. Concurrent inserts into the same slot can deadlock while
+# checking the exclusion constraint; Postgres aborts one of them, which means
+# that request lost the race for the slot.
 EXCLUSION_VIOLATION = '23P01'
+DEADLOCK_DETECTED = '40P01'
 
 
 class SlotUnavailable(APIException):
@@ -35,10 +39,14 @@ class SlotUnavailable(APIException):
     default_code = 'slot_unavailable'
 
 
-def _is_exclusion_violation(exc):
+def _sqlstate(exc):
     cause = exc.__cause__
     # psycopg2 exposes `pgcode`, psycopg3 exposes `sqlstate`.
-    return (getattr(cause, 'pgcode', None) or getattr(cause, 'sqlstate', None)) == EXCLUSION_VIOLATION
+    return getattr(cause, 'pgcode', None) or getattr(cause, 'sqlstate', None)
+
+
+def _is_exclusion_violation(exc):
+    return _sqlstate(exc) == EXCLUSION_VIOLATION
 
 
 def _notify(booking, event):
@@ -124,6 +132,10 @@ def create_booking(user, service_id, employee_id, start_at):
             )
     except IntegrityError as exc:
         if _is_exclusion_violation(exc):
+            raise SlotUnavailable()
+        raise
+    except OperationalError as exc:
+        if _sqlstate(exc) == DEADLOCK_DETECTED:
             raise SlotUnavailable()
         raise
 
