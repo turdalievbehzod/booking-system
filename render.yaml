@@ -19,10 +19,12 @@ services:
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
     # Free instances have no shell and no pre-deploy step, so migrations and the
     # admin account (from DJANGO_SUPERUSER_*) are handled on start. ensure_superuser
-    # is idempotent and logs why when it cannot create the account.
+    # is idempotent and logs why when it cannot create the account. seed_demo fills
+    # an empty catalogue only, so admin edits are never overwritten.
     startCommand: >-
       python manage.py migrate --noinput &&
       python manage.py ensure_superuser &&
+      python manage.py seed_demo &&
       gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --access-logfile -
     envVars:
       - key: PYTHON_VERSION

@@ -17,6 +17,7 @@ Booking system for a small service business (barbershop, clinic, salon...). Cust
 ```bash
 docker compose up --build
 docker compose exec web python manage.py createsuperuser   # becomes a business admin
+docker compose exec web python manage.py seed_demo         # optional: demo services, staff, hours
 ```
 
 - **App (frontend): http://localhost:5173/**
@@ -24,7 +25,7 @@ docker compose exec web python manage.py createsuperuser   # becomes a business 
 - Swagger docs: http://localhost:8000/api/docs/
 - Django admin: http://localhost:8000/admin/
 
-Log in to the app with the superuser to see the **Admin** section: add services, employees and working hours, then book as a customer.
+Log in to the app with the superuser to see the **Admin** section: add services, employees and working hours (or load the demo set with `seed_demo`), then book as a customer.
 
 ### Without Docker
 
@@ -37,6 +38,7 @@ pip install -r requirements.txt
 cp .env.example .env            # then edit DB credentials
 python manage.py migrate
 python manage.py createsuperuser
+python manage.py seed_demo      # optional: demo services, staff, hours
 python manage.py runserver
 
 # in other terminals (email notifications + expiring stale pending bookings)
