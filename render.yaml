@@ -1,0 +1,86 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repo.
+# Free plan: PostgreSQL + one web service. Celery runs tasks inline
+# (CELERY_TASK_ALWAYS_EAGER), so no Redis or worker is needed; see the
+# commented services at the bottom to run a real worker + beat (paid plan).
+
+databases:
+  - name: booking-db
+    plan: free
+    region: frankfurt
+    databaseName: booking
+    user: booking
+
+services:
+  - type: web
+    name: booking-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    # Free instances have no shell and no pre-deploy step, so migrations and the
+    # admin account (from DJANGO_SUPERUSER_*) are handled on start. createsuperuser
+    # fails harmlessly once the account exists.
+    startCommand: >-
+      python manage.py migrate --noinput &&
+      (python manage.py createsuperuser --noinput || true) &&
+      gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --access-logfile -
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: DJANGO_SETTINGS_MODULE
+        value: core.settings.prod
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: booking-db
+          property: connectionString
+      - key: TIME_ZONE
+        value: Asia/Tashkent
+      - key: CELERY_TASK_ALWAYS_EAGER
+        value: "True"
+      # Console backend: emails appear in the service logs. Set SMTP variables
+      # (EMAIL_BACKEND, EMAIL_HOST, EMAIL_HOST_USER, ...) to send real email.
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.console.EmailBackend
+      # Entered in the dashboard on first deploy (not stored in the repo).
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
+
+  # --- Optional, paid: real background tasks and the 10-minute expiry job ---
+  # 1. Uncomment both services below.
+  # 2. On booking-api set CELERY_TASK_ALWAYS_EAGER=False and add CELERY_BROKER_URL
+  #    from the booking-redis connectionString (same as in the worker).
+  #
+  # - type: keyvalue
+  #   name: booking-redis
+  #   plan: free
+  #   region: frankfurt
+  #   ipAllowList: []
+  #
+  # - type: worker
+  #   name: booking-worker
+  #   runtime: python
+  #   plan: starter
+  #   region: frankfurt
+  #   buildCommand: pip install -r requirements.txt
+  #   startCommand: celery -A core worker -B -l info --concurrency 2
+  #   envVars:
+  #     - key: PYTHON_VERSION
+  #       value: 3.12.8
+  #     - key: DJANGO_SETTINGS_MODULE
+  #       value: core.settings.prod
+  #     - key: SECRET_KEY
+  #       fromService: {type: web, name: booking-api, envVarKey: SECRET_KEY}
+  #     - key: DATABASE_URL
+  #       fromDatabase: {name: booking-db, property: connectionString}
+  #     - key: TIME_ZONE
+  #       value: Asia/Tashkent
+  #     - key: CELERY_TASK_ALWAYS_EAGER
+  #       value: "False"
+  #     - key: CELERY_BROKER_URL
+  #       fromService: {type: keyvalue, name: booking-redis, property: connectionString}
