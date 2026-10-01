@@ -17,7 +17,7 @@ if not os.path.exists(env_path):
 if os.path.exists(env_path):
     environ.Env.read_env(env_path)
 else:
-    print("⚠️  Warning: .env file not found!")
+    print("Warning: .env file not found, using environment variables only.")
 
 # DJANGO CORE SETTINGS
 DJANGO_SETTINGS_MODULE = env.str('DJANGO_SETTINGS_MODULE', default='core.settings.dev')
